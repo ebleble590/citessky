@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>CITYLINE: NEW YORK</title>
+<style>
+html,body{margin:0;overflow:hidden;background:#111;font-family:-apple-system,BlinkMacSystemFont,sans-serif;touch-action:none}
+canvas{display:block;width:100vw;height:100vh}
+#hud{position:fixed;inset:0;pointer-events:none;color:white;text-shadow:0 2px 4px #000}
+#title{position:absolute;top:16px;left:18px;font-weight:800;font-size:18px}
+#hint{position:absolute;top:42px;left:18px;font-size:12px;opacity:.8}
+#stick{position:absolute;left:24px;bottom:28px;width:120px;height:120px;border-radius:50%;background:#ffffff22;border:2px solid #ffffff55;pointer-events:auto}
+#knob{position:absolute;width:54px;height:54px;left:33px;top:33px;border-radius:50%;background:#ffffff66}
+.btn{position:absolute;right:25px;width:78px;height:58px;border-radius:18px;background:#ffffff30;border:2px solid #ffffff55;color:white;font-weight:800;pointer-events:auto}
+#gas{bottom:35px} #brake{bottom:105px}
+#info{position:absolute;right:18px;top:16px;font-size:12px;text-align:right}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+<div id="title">CITYLINE: NEW YORK</div>
+<div id="hint">오리지널 뉴욕풍 오픈월드 프로토타입</div>
+<div id="info">도보 모드<br>W/S · 터치 스틱</div>
+<div id="stick"><div id="knob"></div></div>
+<button class="btn" id="gas">가속</button>
+<button class="btn" id="brake">브레이크</button>
+</div>
+<script>
+const c=document.getElementById('c'),x=c.getContext('2d');let W,H;
+function resize(){W=c.width=innerWidth*devicePixelRatio;H=c.height=innerHeight*devicePixelRatio;x.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);W=innerWidth;H=innerHeight}
+addEventListener('resize',resize);resize();
+
+let px=0,pz=0,ang=0,speed=0,night=.15;
+const buildings=[];
+for(let gx=-12;gx<=12;gx++)for(let gz=-12;gz<=12;gz++){
+ if(Math.abs(gx)%3===0||Math.abs(gz)%3===0)continue;
+ buildings.push({x:gx*90+(Math.random()-.5)*12,z:gz*90+(Math.random()-.5)*12,w:55+Math.random()*18,d:55+Math.random()*18,h:30+Math.random()*130});
+}
+const cars=[];for(let i=0;i<28;i++)cars.push({x:(Math.random()*24-12)*90,z:(Math.random()*24-12)*90,a:Math.random()<.5?0:Math.PI/2,v:10+Math.random()*9});
+
+const keys={};onkeydown=e=>keys[e.key.toLowerCase()]=1;onkeyup=e=>keys[e.key.toLowerCase()]=0;
+let touchX=0,touchY=0,drag=false;
+const stick=document.getElementById('stick'),knob=document.getElementById('knob');
+function stickMove(t){let r=stick.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2,dx=t.clientX-cx,dy=t.clientY-cy,m=42,q=Math.hypot(dx,dy);if(q>m){dx*=m/q;dy*=m/q}knob.style.transform=`translate(${dx}px,${dy}px)`;touchX=dx/m;touchY=dy/m}
+stick.addEventListener('touchstart',e=>{drag=true;stickMove(e.touches[0])});
+stick.addEventListener('touchmove',e=>{e.preventDefault();stickMove(e.touches[0])},{passive:false});
+stick.addEventListener('touchend',()=>{drag=false;touchX=touchY=0;knob.style.transform='translate(0,0)'});
+let gas=false,brake=false;
+for(const id of ['gas','brake']){let b=document.getElementById(id),set=v=>{if(id==='gas')gas=v;else brake=v};b.ontouchstart=e=>{e.preventDefault();set(1)};b.ontouchend=e=>{e.preventDefault();set(0)}}
+
+function project(wx,wz,h=0){
+ let dx=wx-px,dz=wz-pz,co=Math.cos(ang),si=Math.sin(ang);
+ let sx=dx*co-dz*si,sz=dx*si+dz*co;
+ if(sz<3)return null;
+ let f=600/sz, cx=W/2+sx*f, cy=H*.53-h*f*.7;
+ return [cx,cy,f];
+}
+function drawBuilding(b){
+ let p=project(b.x,b.z,b.h);if(!p)return;
+ let [sx,sy,f]=p,ww=b.w*f,dd=b.d*f*.45;
+ if(sx+ww<0||sx-ww>W||sy>H)return;
+ let lit=night<.5?'#777':'#39414b';
+ x.fillStyle=lit;x.fillRect(sx-ww/2,sy- b.h*f*.7,ww,b.h*f*.7);
+ x.fillStyle=night<.5?'#555':'#252b33';
+ x.fillRect(sx-ww/2,sy,ww,dd);
+ if(f>2){
+  x.fillStyle=night<.5?'#b9a56b':'#e5c86c';
+  for(let r=0;r<Math.min(10,Math.floor(b.h/18));r++)for(let q=0;q<4;q++)
+   x.fillRect(sx-ww*.36+q*ww*.22,sy-b.h*f*.62+r*f*5,Math.max(2,f*2),Math.max(2,f*3));
+ }
+}
+function drawRoads(){
+ x.fillStyle=night<.5?'#555':'#202328';x.fillRect(0,H*.47,W,H*.53);
+ x.fillStyle='#aaa';
+ for(let i=-8;i<9;i++){let yy=H*.58+i*70;x.fillRect(0,yy,W,2)}
+}
+function frame(t){
+ let dt=Math.min(.035,(t-(frame.last||t))/1000);frame.last=t;
+ let ax=(keys.d||keys.arrowright?1:0)-(keys.a||keys.arrowleft?1:0)+touchX;
+ let f=(keys.w||keys.arrowup?1:0)-(keys.s||keys.arrowdown?1:0)-touchY;
+ if(gas)f+=1;if(brake)f-=1;
+ speed+=(f*18-speed*2.2)*dt;speed=Math.max(-8,Math.min(28,speed));
+ ang+=ax*2.2*dt*(.5+Math.abs(speed)/18);
+ px+=Math.sin(ang)*speed*dt*5;pz+=Math.cos(ang)*speed*dt*5;
+ night=(Math.sin(t/18000)+1)/2;
+ x.clearRect(0,0,W,H);
+ let sky=x.createLinearGradient(0,0,0,H*.6);sky.addColorStop(0,night>.55?'#091326':'#6aa5d8');sky.addColorStop(1,night>.55?'#29354a':'#d6e7f2');x.fillStyle=sky;x.fillRect(0,0,W,H);
+ drawRoads();
+ buildings.sort((a,b)=>((b.x-px)**2+(b.z-pz)**2)-((a.x-px)**2+(a.z-pz)**2)).slice(0,220).forEach(drawBuilding);
+ // player marker
+ x.save();x.translate(W/2,H*.72);x.rotate(-ang);x.fillStyle='#e9edf2';x.beginPath();x.moveTo(0,-15);x.lineTo(9,13);x.lineTo(0,8);x.lineTo(-9,13);x.closePath();x.fill();x.restore();
+ if(night>.55){x.fillStyle='rgba(0,0,30,.38)';x.fillRect(0,0,W,H)}
+ requestAnimationFrame(frame)
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
